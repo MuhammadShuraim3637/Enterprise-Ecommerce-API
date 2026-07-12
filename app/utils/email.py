@@ -1,12 +1,13 @@
-import smtplib
 from pathlib import Path
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 import logging
+
+import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def send_html_email(
@@ -34,48 +35,41 @@ def send_html_email(
         </a>
         """
 
-    message = MIMEMultipart()
+    payload = {
+        "from": settings.EMAIL_FROM,
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content,
+    }
 
-    message["From"] = settings.SMTP_USERNAME
-    message["To"] = to_email
-    message["Subject"] = subject
-
-    message.attach(
-        MIMEText(html_content, "html")
-    )
+    headers = {
+        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+        "Content-Type": "application/json",
+    }
 
     try:
+        response = httpx.post(
+            RESEND_API_URL,
+            json=payload,
+            headers=headers,
+            timeout=10.0,
+        )
 
-        with smtplib.SMTP(
-            settings.SMTP_HOST,
-            settings.SMTP_PORT,
-        ) as server:
+        if response.status_code in (200, 201):
+            logger.info(f"Email sent successfully to {to_email}")
+            return True
 
-            server.starttls()
-
-            server.login(
-                settings.SMTP_USERNAME,
-                settings.SMTP_PASSWORD,
-            )
-
-            server.sendmail(
-                settings.SMTP_USERNAME,
-                to_email,
-                message.as_string(),
-            )
-
-        logger.info(f"Email sent successfully to {to_email}")
-        return True
-
-    except smtplib.SMTPAuthenticationError as e:
-        logger.error(f"SMTP Authentication failed: {str(e)}")
-        logger.error("Gmail: Use App Password, not regular password. Enable 2FA first.")
+        # Resend returns useful error details in the response body —
+        # e.g. sandbox mode rejecting a recipient other than the account owner.
+        logger.error(
+            f"Resend API error ({response.status_code}) sending to {to_email}: {response.text}"
+        )
         return False
-    
-    except smtplib.SMTPException as e:
-        logger.error(f"SMTP Error: {str(e)}")
+
+    except httpx.TimeoutException:
+        logger.error(f"Email request to Resend timed out for {to_email}")
         return False
-    
+
     except Exception as e:
         logger.error(f"Email Error: {str(e)}", exc_info=True)
         return False
