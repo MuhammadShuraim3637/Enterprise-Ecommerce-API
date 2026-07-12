@@ -36,20 +36,21 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
     if user is None:
         raise credentials_exception
         
-    # Check 1: Kya user ka account active hai?
+    # Check: Kya user ka account active hai?
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
             detail="Inactive user account"
         )
-        
-    # Check 2: Kya user ne email verify karwa liya hai? (Crucial Security Fix)
-    if not user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Please verify your email first"
-        )
-        
+
+    # NOTE: email verification is intentionally NOT enforced here.
+    # This is a portfolio/demo project — accounts can log in and use the API
+    # immediately after registering, without clicking a verification link.
+    # The verification flow (register → token → /auth/verify-email) still
+    # exists in the codebase and works end-to-end; it's just not required
+    # to access protected routes. Admin promotion is done manually via a
+    # direct SQL UPDATE on the database (see README).
+
     return user
 
 

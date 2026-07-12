@@ -103,24 +103,26 @@ def test_login_inactive_account(client, db_session):
     assert response.status_code == 400
     assert response.json()["detail"] == "Account is disabled"
 
-
-def test_me_endpoint_unverified_user_forbidden(client, db_session):
+def test_me_endpoint_works_without_email_verification(client, db_session):
+    # NOTE: Email verification is intentionally not enforced in this project
+    # (portfolio/demo decision — see dependencies/auth.py and README).
+    # An unverified user should still be able to log in and access /me.
     client.post("/api/v1/auth/register", json={
-        "email": "unverified@example.com",
+        "email": "unverified_ok@example.com",
         "password": "password12345",
         "full_name": "Unverified User"
     })
     login_response = client.post("/api/v1/auth/login", json={
-        "email": "unverified@example.com",
+        "email": "unverified_ok@example.com",
         "password": "password12345"
     })
     access_token = login_response.json()["access_token"]
 
     headers = {"Authorization": f"Bearer {access_token}"}
     response = client.get("/api/v1/auth/me", headers=headers)
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Please verify your email first"
-
+    assert response.status_code == 200
+    assert response.json()["email"] == "unverified_ok@example.com"
+    assert response.json()["is_verified"] is False
 
 def test_me_endpoint_invalid_token(client, db_session):
     headers = {"Authorization": "Bearer this.is.not.a.valid.token"}
